@@ -13,6 +13,7 @@
     { key: 'eeg', icon: '∿', label: '看懂波形' },
     { key: 'eval', icon: '◎', label: '读懂指标' },
     { key: 'lab', icon: '✎', label: '动手调一调' },
+    { key: 'needle', icon: '✚', label: '3D 扎针' },
     { key: 'state', icon: '✦', label: '脑状态' },
     { key: 'tcm', icon: '医', label: '针灸卡片' },
     { key: 'method', icon: '⚖', label: '科学方法' },
@@ -255,6 +256,368 @@
       </div>`;
   }
 
+  /* ================= 3D 扎针（自研极简 3D：点云 + 透视投影，无第三方库） ================= */
+  const HEAD_R = { x: 0.78, y: 0.98, z: 0.84 };
+
+  const ACUPOINTS = [
+    { key: 'gv20', name: '百会', code: 'GV20', p: [0, 0.97, 0.06],
+      loc: '头顶正中线与两耳尖连线交点', eeg: '中线顶部，靠近 Cz 上方区域',
+      eff: { delta: 1.0, theta: 1.10, alpha: 1.25, beta: 0.85, gamma: 1.0 } },
+    { key: 'gv24', name: '神庭', code: 'GV24', p: [0, 0.60, 0.74],
+      loc: '前发际正中直上 0.5 寸', eeg: '前额中线，接近 Fp1/Fp2 之间',
+      eff: { delta: 1.0, theta: 1.05, alpha: 1.18, beta: 0.92, gamma: 1.10 } },
+    { key: 'exhn3', name: '印堂', code: 'EX-HN3', p: [0, 0.26, 0.86],
+      loc: '两眉头连线中点', eeg: '前额区，对应 Fp1/Fp2，易受眼动干扰',
+      eff: { delta: 1.05, theta: 1.0, alpha: 1.15, beta: 0.90, gamma: 1.20 } },
+    { key: 'exhn5l', name: '太阳（左）', code: 'EX-HN5', p: [-0.70, 0.24, 0.44],
+      loc: '眉梢与目外眦之间向后约一横指', eeg: '颞侧，接近 F7/T3 方向',
+      eff: { delta: 1.0, theta: 1.05, alpha: 1.10, beta: 0.80, gamma: 1.0 } },
+    { key: 'exhn5r', name: '太阳（右）', code: 'EX-HN5', p: [0.70, 0.24, 0.44],
+      loc: '眉梢与目外眦之间向后约一横指', eeg: '颞侧，接近 F8/T4 方向',
+      eff: { delta: 1.0, theta: 1.05, alpha: 1.10, beta: 0.80, gamma: 1.0 } },
+    { key: 'gb8l', name: '率谷（左）', code: 'GB8', p: [0.72, 0.60, 0.06],
+      loc: '耳尖直上入发际 1.5 寸', eeg: '颞顶区，接近 T3/P3 方向',
+      eff: { delta: 1.0, theta: 1.10, alpha: 1.05, beta: 0.85, gamma: 1.0 } },
+    { key: 'gb8r', name: '率谷（右）', code: 'GB8', p: [-0.72, 0.60, 0.06],
+      loc: '耳尖直上入发际 1.5 寸', eeg: '颞顶区，接近 T4/P4 方向',
+      eff: { delta: 1.0, theta: 1.10, alpha: 1.05, beta: 0.85, gamma: 1.0 } },
+    { key: 'gb20l', name: '风池（左）', code: 'GB20', p: [-0.34, -0.26, -0.80],
+      loc: '枕骨下，胸锁乳突肌与斜方肌之间凹陷', eeg: '后枕区，靠近 α 节律最明显的位置',
+      eff: { delta: 1.05, theta: 1.15, alpha: 1.22, beta: 0.90, gamma: 1.0 } },
+    { key: 'gb20r', name: '风池（右）', code: 'GB20', p: [0.34, -0.26, -0.80],
+      loc: '枕骨下，胸锁乳突肌与斜方肌之间凹陷', eeg: '后枕区，靠近 α 节律最明显的位置',
+      eff: { delta: 1.05, theta: 1.15, alpha: 1.22, beta: 0.90, gamma: 1.0 } },
+    { key: 'st8l', name: '头维（左）', code: 'ST8', p: [-0.62, 0.56, 0.46],
+      loc: '额角发际直上 0.5 寸', eeg: '额区外侧，接近 F3 前上方',
+      eff: { delta: 1.0, theta: 1.0, alpha: 1.08, beta: 0.88, gamma: 1.05 } },
+    { key: 'st8r', name: '头维（右）', code: 'ST8', p: [0.62, 0.56, 0.46],
+      loc: '额角发际直上 0.5 寸', eeg: '额区外侧，接近 F4 前上方',
+      eff: { delta: 1.0, theta: 1.0, alpha: 1.08, beta: 0.88, gamma: 1.05 } },
+  ];
+
+  const Needle = {
+    yaw: 0.45, pitch: -0.10, sel: -1, hover: -1,
+    insert: 0, drag: null, spin: true, last: 0, pts: null,
+  };
+
+  function needleModelPoints() {
+    if (Needle.pts) return Needle.pts;
+    const out = [];
+    // 头部：费波那契球采样
+    const N = 700;
+    for (let i = 0; i < N; i++) {
+      const y = 1 - (i / (N - 1)) * 2;
+      const r = Math.sqrt(Math.max(0, 1 - y * y));
+      const th = Math.PI * (3 - Math.sqrt(5)) * i;
+      out.push([Math.cos(th) * r * HEAD_R.x, y * HEAD_R.y, Math.sin(th) * r * HEAD_R.z]);
+    }
+    // 耳朵：两侧小椭球
+    for (const sx of [-1, 1]) {
+      for (let i = 0; i < 70; i++) {
+        const y = 1 - (i / 69) * 2;
+        const r = Math.sqrt(Math.max(0, 1 - y * y));
+        const th = Math.PI * (3 - Math.sqrt(5)) * i;
+        out.push([
+          sx * (0.74 + Math.cos(th) * r * 0.08),
+          0.02 + y * 0.20,
+          -0.02 + Math.sin(th) * r * 0.13,
+        ]);
+      }
+    }
+    // 颈部：圆柱侧面网格
+    for (let row = 0; row < 6; row++) {
+      const yy = -0.92 - row * 0.055;
+      const rr = 0.30 - row * 0.004;
+      for (let i = 0; i < 44; i++) {
+        const th = (i / 44) * Math.PI * 2;
+        out.push([Math.cos(th) * rr, yy, Math.sin(th) * rr * 0.86]);
+      }
+    }
+    // 肩部：椭圆渐扩网格
+    for (let row = 0; row < 7; row++) {
+      const p = row / 6;                       // 0 靠近脖子 → 1 外沿
+      const yy = -1.26 - p * 0.30 - Math.sin(p * Math.PI) * 0.04;
+      const rx = 0.34 + p * 0.95;
+      const rz = 0.30 + p * 0.42;
+      for (let i = 0; i < 52; i++) {
+        const th = (i / 52) * Math.PI * 2;
+        out.push([Math.cos(th) * rx, yy, Math.sin(th) * rz]);
+      }
+    }
+    Needle.pts = out;
+    return out;
+  }
+
+  function needleRot(p) {
+    const cy = Math.cos(Needle.yaw), sy = Math.sin(Needle.yaw);
+    const cp = Math.cos(Needle.pitch), sp = Math.sin(Needle.pitch);
+    const x = p[0] * cy + p[2] * sy;
+    const z = -p[0] * sy + p[2] * cy;
+    const y = p[1] * cp - z * sp;
+    const z2 = p[1] * sp + z * cp;
+    return [x, y, z2];
+  }
+
+  function needleProject(w, h) {
+    const cx = w / 2, cy = h * 0.50, scale = Math.min(w, h) * 0.30;
+    return (p) => {
+      const r = needleRot(p);
+      const s = scale / (1 - r[2] * 0.16);
+      return { x: cx + r[0] * s, y: cy - r[1] * s, z: r[2], s };
+    };
+  }
+
+  function needleDraw(dt) {
+    const cv = $('#needle3d');
+    if (!cv) return;
+    const ctx = cv.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const w = cv.clientWidth, h = cv.clientHeight;
+    if (!w || !h) return;
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+      cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    if (Needle.spin && !Needle.drag) Needle.yaw += dt * 0.22;
+    const wantIn = Needle.sel >= 0 ? 1 : 0;
+    Needle.insert += (wantIn - Needle.insert) * Math.min(1, dt * 4.5);
+
+    const project = needleProject(w, h);
+    const cx = w / 2, cy = h * 0.50;
+
+    const g = ctx.createRadialGradient(cx, cy, 10, cx, cy, Math.max(w, h) * 0.55);
+    g.addColorStop(0, 'rgba(56,189,248,.09)');
+    g.addColorStop(1, 'rgba(56,189,248,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+
+    const pts = needleModelPoints().map((p) => ({ ...project(p) })).sort((a, b) => a.z - b.z);
+    for (const q of pts) {
+      const depth = (q.z + 1.2) / 2.4;
+      const a = 0.06 + depth * 0.30;
+      const size = 0.7 + depth * 1.15;
+      ctx.fillStyle = `rgba(${q.z > 0 ? '150,215,255' : '90,130,180'},${a.toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(q.x, q.y, size, 0, Math.PI * 2); ctx.fill();
+    }
+
+    const marks = ACUPOINTS.map((a, i) => ({ ...project(a.p), i, a })).sort((m, n) => m.z - n.z);
+    for (const m of marks) {
+      const front = m.z > -0.10;
+      if (!front && m.i !== Needle.sel) continue;
+      const isSel = m.i === Needle.sel;
+      const isHover = m.i === Needle.hover;
+      const r = isSel ? 7.5 : isHover ? 6 : 4.2;
+      const color = isSel ? '#34D399' : '#38BDF8';
+      ctx.save();
+      ctx.shadowColor = color;
+      ctx.shadowBlur = isSel ? 16 : 9;
+      ctx.fillStyle = color;
+      ctx.globalAlpha = front ? 0.95 : 0.35;
+      ctx.beginPath(); ctx.arc(m.x, m.y, r, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      if (isSel || isHover || front) {
+        ctx.font = '11px "Microsoft YaHei"';
+        ctx.fillStyle = isSel ? '#A7F3D0' : 'rgba(200,220,245,.78)';
+        ctx.textAlign = 'left';
+        ctx.fillText(m.a.name, m.x + r + 5, m.y + 3.5);
+      }
+    }
+
+    if (Needle.sel >= 0 && Needle.insert > 0.01) {
+      const a = ACUPOINTS[Needle.sel];
+      const L = Math.hypot(a.p[0] / HEAD_R.x, a.p[1] / HEAD_R.y, a.p[2] / HEAD_R.z) || 1;
+      const n = [a.p[0] / HEAD_R.x / L, a.p[1] / HEAD_R.y / L, a.p[2] / HEAD_R.z / L];
+      const out = [a.p[0] + n[0] * 0.95, a.p[1] + n[1] * 0.95, a.p[2] + n[2] * 0.95];
+      const t = Needle.insert;
+      const tip = [a.p[0] + n[0] * (0.95 - t * 1.10), a.p[1] + n[1] * (0.95 - t * 1.10), a.p[2] + n[2] * (0.95 - t * 1.10)];
+      const P1 = project(out), P2 = project(tip);
+      ctx.save();
+      ctx.strokeStyle = 'rgba(226,240,255,.95)';
+      ctx.lineWidth = 2.2;
+      ctx.shadowColor = '#A7F3D0'; ctx.shadowBlur = 10;
+      ctx.beginPath(); ctx.moveTo(P1.x, P1.y); ctx.lineTo(P2.x, P2.y); ctx.stroke();
+      ctx.strokeStyle = 'rgba(56,189,248,.9)';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(P1.x, P1.y);
+      ctx.lineTo(P1.x + (P2.x - P1.x) * 0.10, P1.y + (P2.y - P1.y) * 0.10);
+      ctx.stroke();
+      ctx.restore();
+      if (t > 0.92) {
+        const ring = ((performance.now() / 900) % 1);
+        ctx.strokeStyle = `rgba(52,211,153,${((1 - ring) * 0.6).toFixed(3)})`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(P2.x, P2.y, 5 + ring * 16, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+
+    ctx.textAlign = 'left';
+    ctx.font = '11px Consolas, monospace';
+    ctx.fillStyle = 'rgba(140,165,195,.65)';
+    ctx.fillText('拖拽旋转 · 点击穴位落针', 12, h - 14);
+  }
+
+  function updateNeedlePanel() {
+    const info = $('#needle-info');
+    const bands = $('#needle-bands');
+    const pill = $('#needle-pill');
+    if (!info) return;
+    const a = Needle.sel >= 0 ? ACUPOINTS[Needle.sel] : null;
+    if (pill) pill.textContent = a ? ('已选：' + a.name) : '未选穴位';
+    if (!a) {
+      info.innerHTML = `<div class="hint" style="line-height:2">拖动头部模型，点任意穴位把针插进去。<br>选中后，<b>其他页面</b>的波形也会跟着变成这个穴位对应的演示设定。</div>`;
+      if (bands) bands.innerHTML = `<div class="hint">先选一个穴位</div>`;
+      return;
+    }
+    const rows = [
+      ['δ 德尔塔', a.eff.delta, '#7C8DA6'],
+      ['θ 西塔', a.eff.theta, '#A78BFA'],
+      ['α 阿尔法', a.eff.alpha, '#38BDF8'],
+      ['β 贝塔', a.eff.beta, '#34D399'],
+      ['γ 伽马', a.eff.gamma, '#FBBF24'],
+    ];
+    if (bands) {
+      bands.innerHTML = rows.map(([label, v, color]) => {
+        const pct = Math.min(100, (v / 1.4) * 100);
+        const c = v > 1.02 ? '#34D399' : v < 0.98 ? '#F87171' : '#6A80A0';
+        return `<div class="weight-row">
+          <span class="weight-name">${label}</span>
+          <span class="weight-pct" style="color:${c}">×${v.toFixed(2)}</span>
+          <div class="weight-track"><div class="weight-fill" style="width:${pct.toFixed(0)}%;background:linear-gradient(90deg,${color}88,${color})"></div></div>
+          <span class="weight-val" style="color:${c}">${v > 1.02 ? '↑' : v < 0.98 ? '↓' : '—'}</span>
+        </div>`;
+      }).join('');
+    }
+    info.innerHTML = `
+      <div style="font-size:15px;font-weight:700;color:var(--text)">${a.name}
+        <span style="font-size:11px;color:var(--text-tertiary);font-weight:400;margin-left:6px">${a.code}</span></div>
+      <div class="hint" style="margin-top:8px;line-height:1.95">
+        <b>传统定位：</b>${a.loc}<br>
+        <b>与脑电的关系：</b>${a.eeg}
+      </div>
+      <div class="hint" style="margin-top:8px;padding:8px 10px;border-left:2px solid var(--amber);background:rgba(251,191,36,.07)">
+        这个穴位的「频段权重」是<b>本作品自定的演示设定</b>，用来展示「不同点位可以给出不同曲线」，<b>不是实验测出来的结果</b>。
+      </div>`;
+  }
+
+  function bindNeedle() {
+    const cv = $('#needle3d');
+    if (!cv || cv._bound) return;
+    cv._bound = true;
+    const pick = (ev) => {
+      const r = cv.getBoundingClientRect();
+      const x = ev.clientX - r.left, y = ev.clientY - r.top;
+      const project = needleProject(cv.clientWidth, cv.clientHeight);
+      let best = -1, bestD = 26;
+      ACUPOINTS.forEach((a, i) => {
+        const pp = project(a.p);
+        const d = Math.hypot(pp.x - x, pp.y - y);
+        if (d < bestD) { bestD = d; best = i; }
+      });
+      return best;
+    };
+    cv.addEventListener('pointerdown', (ev) => {
+      try { cv.setPointerCapture(ev.pointerId); } catch (e) {}
+      Needle.drag = { x: ev.clientX, y: ev.clientY, yaw: Needle.yaw, pitch: Needle.pitch, moved: 0 };
+    });
+    cv.addEventListener('pointermove', (ev) => {
+      if (Needle.drag) {
+        const dx = ev.clientX - Needle.drag.x, dy = ev.clientY - Needle.drag.y;
+        Needle.drag.moved = Math.max(Needle.drag.moved, Math.hypot(dx, dy));
+        Needle.yaw = Needle.drag.yaw + dx * 0.008;
+        Needle.pitch = Math.max(-0.6, Math.min(0.6, Needle.drag.pitch + dy * 0.005));
+      } else {
+        Needle.hover = pick(ev);
+        cv.style.cursor = Needle.hover >= 0 ? 'pointer' : 'grab';
+      }
+    });
+    const endDrag = (ev) => {
+      const d = Needle.drag;
+      Needle.drag = null;
+      if (!d) return;
+      if (d.moved < 6) {
+        const i = pick(ev);
+        Needle.sel = i;
+        Needle.insert = 0;
+        Sim.setPointEffect(i >= 0 ? ACUPOINTS[i].eff : null);
+        updateNeedlePanel();
+      }
+    };
+    cv.addEventListener('pointerup', endDrag);
+    cv.addEventListener('pointercancel', () => { Needle.drag = null; });
+    cv.addEventListener('pointerleave', () => { Needle.hover = -1; });
+
+    const btnSpin = $('#needle-spin');
+    if (btnSpin) btnSpin.addEventListener('click', () => {
+      Needle.spin = !Needle.spin;
+      btnSpin.textContent = Needle.spin ? '暂停旋转' : '开始旋转';
+    });
+    const btnFront = $('#needle-front');
+    if (btnFront) btnFront.addEventListener('click', () => {
+      Needle.yaw = 0; Needle.pitch = -0.05; Needle.spin = false;
+      const b = $('#needle-spin'); if (b) b.textContent = '开始旋转';
+    });
+    const btnClear = $('#needle-clear');
+    if (btnClear) btnClear.addEventListener('click', () => {
+      Needle.sel = -1; Needle.insert = 0;
+      Sim.setPointEffect(null);
+      updateNeedlePanel();
+    });
+  }
+
+  function pageNeedle() {
+    return `
+      <div class="page-head">
+        <div>
+          <div class="page-eyebrow">3D Acupoint Lab</div>
+          <div class="page-title">3D 扎针</div>
+          <div class="page-sub">拖动旋转头部，点一个穴位落针，看这个点位在本演示里对应的频段权重</div>
+        </div>
+        <div class="right"><span class="pill" id="needle-pill">未选穴位</span></div>
+      </div>
+      <div class="grid grid-main">
+        <div>
+          <div class="card">
+            <div class="card-title"><span class="dot"></span>头部模型
+              <span class="extra">
+                <button class="btn" id="needle-spin" style="padding:2px 8px;font-size:10px">暂停旋转</button>
+                <button class="btn" id="needle-front" style="padding:2px 8px;font-size:10px;margin-left:4px">正面</button>
+                <button class="btn" id="needle-clear" style="padding:2px 8px;font-size:10px;margin-left:4px">拔针</button>
+              </span>
+            </div>
+            <div class="canvas-wrap"><canvas id="needle3d" style="height:460px;touch-action:none;cursor:grab"></canvas></div>
+            <div class="canvas-legend">
+              <span><span class="legend-dot" style="background:#38BDF8"></span>穴位</span>
+              <span><span class="legend-dot" style="background:#34D399"></span>当前落针点</span>
+              <span>拖拽旋转 · 点击落针 · 共 ${ACUPOINTS.length} 个点位</span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="card gold">
+            <div class="card-title"><span class="dot"></span>当前穴位</div>
+            <div id="needle-info"></div>
+          </div>
+          <div class="card">
+            <div class="card-title"><span class="dot"></span>频段权重（演示设定）
+              <span class="extra">1.00 = 不变</span>
+            </div>
+            <div id="needle-bands"></div>
+          </div>
+        </div>
+      </div>
+      <div class="card mt16">
+        <div class="card-title"><span class="dot"></span>这一页想说明什么</div>
+        <div class="hint" style="line-height:2">
+          · 同一颗脑袋，<b>扎在不同位置</b>，理论上会被不同脑区、不同深度的结构影响，所以「扎哪儿」本身就是一个变量；<br>
+          · 但要把「点位 A 和点位 B 不一样」坐实，必须做<b>同一个人、同一手法、随机顺序、对照比较</b>，本演示做不到；<br>
+          · 所以这里的 5 条频段权重是<b>演示设定</b>（人为写死的倍数），它演示的是「不同点位可以给出不同曲线」这件事该怎么被记录和比较，<b>不是实验结果</b>。
+        </div>
+      </div>`;
+  }
+
   function pageMethod() {
     return `
       <div class="page-head">
@@ -424,7 +787,7 @@
       <div class="report-paper" id="report-paper" style="display:none"></div>`;
   }
 
-  const PAGE_FN = { dashboard: pageDashboard, eeg: pageEeg, eval: pageEval, lab: pageLab, state: pageState, tcm: pageTcm, method: pageMethod, history: pageHistory, report: pageReport };
+  const PAGE_FN = { dashboard: pageDashboard, eeg: pageEeg, eval: pageEval, lab: pageLab, needle: pageNeedle, state: pageState, tcm: pageTcm, method: pageMethod, history: pageHistory, report: pageReport };
 
   /* ================= 初始化 ================= */
   function buildNav() {
@@ -1126,6 +1489,7 @@
         case 'eeg': renderEeg(); break;
         case 'eval': renderEval(); break;
         case 'lab': renderLab(); break;
+        case 'needle': updateNeedlePanel(); break;
         case 'state': renderState(); break;
         case 'tcm': renderTcm(); break;
         case 'method': break;
@@ -1141,6 +1505,7 @@
     App.lastTick = now;
     Sim.advance(dt);
     render(dt);
+    if (App.current === 'needle') needleDraw(dt);
     requestAnimationFrame(loop);
   }
 
@@ -1151,6 +1516,7 @@
     bindControls();
     bindLab();
     bindQuiz();
+    bindNeedle();
     go('dashboard');
     Sim.setSpeed(1);
     requestAnimationFrame(loop);
@@ -1165,6 +1531,16 @@
       Sim.state.running = false; // 预跑后停住，便于截图
     }
     if (page && PAGE_FN[page]) go(page);
+    // 截图调试：?page=needle&sel=0 预选某个穴位并插好针
+    if (App.current === 'needle') {
+      const sel = Number(params.get('sel') === null ? -1 : params.get('sel'));
+      if (sel >= 0 && ACUPOINTS[sel]) {
+        Needle.sel = sel; Needle.insert = 1;
+        Sim.setPointEffect(ACUPOINTS[sel].eff);
+      }
+      updateNeedlePanel();
+      needleDraw(0.016);
+    }
     // 截图调试：?page=report&fast=52&report=1 直接生成报告
     if (params.get('report') === '1' && App.current === 'report') {
       generateReport(true);
