@@ -13,7 +13,6 @@
     { key: 'eeg', icon: '∿', label: '看懂波形' },
     { key: 'eval', icon: '◎', label: '读懂指标' },
     { key: 'lab', icon: '✎', label: '动手调一调' },
-    { key: 'needle', icon: '✚', label: '3D 扎针' },
     { key: 'state', icon: '✦', label: '脑状态' },
     { key: 'tcm', icon: '医', label: '针灸卡片' },
     { key: 'method', icon: '⚖', label: '科学方法' },
@@ -210,16 +209,31 @@
         <div>
           <div class="page-eyebrow">Try It Yourself</div>
           <div class="page-title">动手调一调</div>
-          <div class="page-sub">拖动下面三个滑杆，看「一份脑电波形」是怎么被拼出来的</div>
+          <div class="page-sub">拖动头部、点一个穴位落针，再看波形怎么跟着变</div>
         </div>
+        <div class="right"><span class="pill" id="needle-pill">未选穴位</span></div>
       </div>
       <div class="grid grid-main">
         <div>
           <div class="card">
-            <div class="card-title"><span class="dot"></span>合成波形（1 秒窗口）
-              <span class="extra">蓝=α 成分 · 绿=β 成分 · 灰=噪声 · 白=叠加后</span>
+            <div class="card-title"><span class="dot"></span>头部模型（拖拽旋转 · 点击落针）
+              <span class="extra">
+                <button class="btn" id="needle-front" style="padding:2px 8px;font-size:10px">正面</button>
+                <button class="btn" id="needle-clear" style="padding:2px 8px;font-size:10px;margin-left:4px">拔针</button>
+              </span>
             </div>
-            <div class="canvas-wrap"><canvas id="lab-wave" style="height:260px"></canvas></div>
+            <div class="canvas-wrap"><canvas id="needle3d" style="height:360px;touch-action:none;cursor:grab"></canvas></div>
+            <div class="canvas-legend">
+              <span><span class="legend-dot" style="background:#38BDF8"></span>穴位</span>
+              <span><span class="legend-dot" style="background:#34D399"></span>当前落针点</span>
+              <span>共 ${ACUPOINTS.length} 个点位 · 拖拽旋转 · 点击落针</span>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title"><span class="dot"></span>合成波形（1 秒窗口）
+              <span class="extra" id="lab-wave-hint">蓝=α 成分 · 绿=β 成分 · 灰=噪声 · 白=叠加</span>
+            </div>
+            <div class="canvas-wrap"><canvas id="lab-wave" style="height:240px"></canvas></div>
             <div class="canvas-legend">
               <span><span class="legend-dot" style="background:#38BDF8"></span>α 成分（约 10 Hz）</span>
               <span><span class="legend-dot" style="background:#34D399"></span>β 成分（约 20 Hz）</span>
@@ -227,31 +241,35 @@
               <span><span class="legend-dot" style="background:#E8F1FF"></span>叠加结果</span>
             </div>
           </div>
-          <div class="card">
-            <div class="card-title"><span class="dot"></span>怎么读这张图</div>
-            <div class="hint" style="line-height:2">
-              真实脑电是无数神经活动的叠加，肉眼看上去只是一条乱七八糟的曲线。<br>
-              把它拆成「哪个频率的成分多」，需要做 <b>傅里叶变换（FFT）</b>——这正是「看懂波形」页频段功率图的来源。<br>
-              α 成分调大时，白色曲线会呈现更明显的 10 Hz 节律；噪声调大时，节律被淹没——这就是为什么实验里要控制环境、检查电极。
-            </div>
-          </div>
         </div>
         <div>
+          <div class="card gold">
+            <div class="card-title"><span class="dot"></span>当前穴位</div>
+            <div id="needle-info"></div>
+          </div>
           <div class="card">
-            <div class="card-title"><span class="dot"></span>参数</div>
+            <div class="card-title"><span class="dot"></span>这个穴位对波形的影响
+              <span class="extra">1.00 = 不变</span>
+            </div>
+            <div id="needle-bands"></div>
+          </div>
+          <div class="card">
+            <div class="card-title"><span class="dot"></span>滑杆微调</div>
             <div class="slider-row"><label>α 成分强度</label><input id="p-alpha" type="range" min="0" max="1" step="0.05" value="0.6"><output id="o-alpha">0.60</output></div>
             <div class="slider-row"><label>β 成分强度</label><input id="p-beta" type="range" min="0" max="1" step="0.05" value="0.3"><output id="o-beta">0.30</output></div>
             <div class="slider-row"><label>噪声强度</label><input id="p-noise" type="range" min="0" max="1" step="0.05" value="0.2"><output id="o-noise">0.20</output></div>
-            <div class="hint">这个面板是独立的教学演示，和上面的「开始演示」流程互不影响。</div>
+            <div class="hint">滑杆调的是「底子」，穴位调的是在这个底子上乘一个倍数。</div>
           </div>
-          <div class="card">
-            <div class="card-title"><span class="dot"></span>试着回答</div>
-            <div class="hint" style="line-height:2">
-              · 把 α 调到 1、噪声调到 0，波形像什么？和「闭眼放松时后枕部 α 节律增强」的常见说法对得上吗？<br>
-              · 把噪声调到 1，还能一眼看出 10 Hz 节律吗？如果看不出，该用什么方法？<br>
-              · 如果把这套波形拿去「证明材料有效」，你觉得缺了什么？
-            </div>
-          </div>
+        </div>
+      </div>
+      <div class="card mt16">
+        <div class="card-title"><span class="dot"></span>怎么读 · 试着回答</div>
+        <div class="hint" style="line-height:2">
+          真实脑电是无数神经活动的叠加，肉眼只是一条乱七八糟的曲线；把它拆成「哪个频率的成分多」需要 <b>傅里叶变换</b>，这就是「看懂波形」页频段功率图的来源。<br><br>
+          · 把 α 调到 1、噪声调到 0，波形像什么？和「闭眼放松时后枕部 α 节律增强」对得上吗？<br>
+          · 先选一个穴位（比如百会），再拔针，波形有什么变化？变化的是哪条曲线？<br>
+          · 把噪声调到 1，还能看出 10 Hz 节律吗？看不出该用什么方法？<br>
+          · 如果要把「选 A 穴和选 B 穴效果不同」写成结论，还缺什么？
         </div>
       </div>`;
   }
@@ -297,7 +315,7 @@
 
   const Needle = {
     yaw: 0.45, pitch: -0.10, sel: -1, hover: -1,
-    insert: 0, drag: null, spin: true, last: 0, pts: null,
+    insert: 0, drag: null, last: 0, pts: null,
   };
 
   function needleModelPoints() {
@@ -380,7 +398,6 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
 
-    if (Needle.spin && !Needle.drag) Needle.yaw += dt * 0.22;
     const wantIn = Needle.sel >= 0 ? 1 : 0;
     Needle.insert += (wantIn - Needle.insert) * Math.min(1, dt * 4.5);
 
@@ -549,15 +566,9 @@
     cv.addEventListener('pointercancel', () => { Needle.drag = null; });
     cv.addEventListener('pointerleave', () => { Needle.hover = -1; });
 
-    const btnSpin = $('#needle-spin');
-    if (btnSpin) btnSpin.addEventListener('click', () => {
-      Needle.spin = !Needle.spin;
-      btnSpin.textContent = Needle.spin ? '暂停旋转' : '开始旋转';
-    });
     const btnFront = $('#needle-front');
     if (btnFront) btnFront.addEventListener('click', () => {
-      Needle.yaw = 0; Needle.pitch = -0.05; Needle.spin = false;
-      const b = $('#needle-spin'); if (b) b.textContent = '开始旋转';
+      Needle.yaw = 0; Needle.pitch = -0.05;
     });
     const btnClear = $('#needle-clear');
     if (btnClear) btnClear.addEventListener('click', () => {
@@ -565,57 +576,6 @@
       Sim.setPointEffect(null);
       updateNeedlePanel();
     });
-  }
-
-  function pageNeedle() {
-    return `
-      <div class="page-head">
-        <div>
-          <div class="page-eyebrow">3D Acupoint Lab</div>
-          <div class="page-title">3D 扎针</div>
-          <div class="page-sub">拖动旋转头部，点一个穴位落针，看这个点位在本演示里对应的频段权重</div>
-        </div>
-        <div class="right"><span class="pill" id="needle-pill">未选穴位</span></div>
-      </div>
-      <div class="grid grid-main">
-        <div>
-          <div class="card">
-            <div class="card-title"><span class="dot"></span>头部模型
-              <span class="extra">
-                <button class="btn" id="needle-spin" style="padding:2px 8px;font-size:10px">暂停旋转</button>
-                <button class="btn" id="needle-front" style="padding:2px 8px;font-size:10px;margin-left:4px">正面</button>
-                <button class="btn" id="needle-clear" style="padding:2px 8px;font-size:10px;margin-left:4px">拔针</button>
-              </span>
-            </div>
-            <div class="canvas-wrap"><canvas id="needle3d" style="height:460px;touch-action:none;cursor:grab"></canvas></div>
-            <div class="canvas-legend">
-              <span><span class="legend-dot" style="background:#38BDF8"></span>穴位</span>
-              <span><span class="legend-dot" style="background:#34D399"></span>当前落针点</span>
-              <span>拖拽旋转 · 点击落针 · 共 ${ACUPOINTS.length} 个点位</span>
-            </div>
-          </div>
-        </div>
-        <div>
-          <div class="card gold">
-            <div class="card-title"><span class="dot"></span>当前穴位</div>
-            <div id="needle-info"></div>
-          </div>
-          <div class="card">
-            <div class="card-title"><span class="dot"></span>频段权重（演示设定）
-              <span class="extra">1.00 = 不变</span>
-            </div>
-            <div id="needle-bands"></div>
-          </div>
-        </div>
-      </div>
-      <div class="card mt16">
-        <div class="card-title"><span class="dot"></span>这一页想说明什么</div>
-        <div class="hint" style="line-height:2">
-          · 同一颗脑袋，<b>扎在不同位置</b>，理论上会被不同脑区、不同深度的结构影响，所以「扎哪儿」本身就是一个变量；<br>
-          · 但要把「点位 A 和点位 B 不一样」坐实，必须做<b>同一个人、同一手法、随机顺序、对照比较</b>，本演示做不到；<br>
-          · 所以这里的 5 条频段权重是<b>演示设定</b>（人为写死的倍数），它演示的是「不同点位可以给出不同曲线」这件事该怎么被记录和比较，<b>不是实验结果</b>。
-        </div>
-      </div>`;
   }
 
   function pageMethod() {
@@ -787,7 +747,7 @@
       <div class="report-paper" id="report-paper" style="display:none"></div>`;
   }
 
-  const PAGE_FN = { dashboard: pageDashboard, eeg: pageEeg, eval: pageEval, lab: pageLab, needle: pageNeedle, state: pageState, tcm: pageTcm, method: pageMethod, history: pageHistory, report: pageReport };
+  const PAGE_FN = { dashboard: pageDashboard, eeg: pageEeg, eval: pageEval, lab: pageLab, needle: pageLab, state: pageState, tcm: pageTcm, method: pageMethod, history: pageHistory, report: pageReport };
 
   /* ================= 初始化 ================= */
   function buildNav() {
@@ -814,6 +774,7 @@
   }
 
   function go(key) {
+    if (key === 'needle') key = 'lab';   // 旧的「3D 扎针」页已并入动手调一调
     if (!PAGE_FN[key]) key = 'dashboard';
     App.current = key;
     $$('.nav-item').forEach((el) => el.classList.toggle('active', el.dataset.page === key));
@@ -865,7 +826,7 @@
   }
 
   /* ---- 动手调一调：合成波形教学演示 ---- */
-  const Lab = { alpha: 0.6, beta: 0.3, noise: 0.2, t: 0 };
+  const Lab = { alpha: 0.6, beta: 0.3, noise: 0.2, t: 0, am: 1, bm: 1 };
 
   function bindLab() {
     const bind = (id, out, key) => {
@@ -924,8 +885,13 @@
       ctx.globalAlpha = 1;
     };
 
-    const aWave = (t) => Math.sin(2 * Math.PI * 10 * t) * Lab.alpha * 0.55;
-    const bWave = (t) => Math.sin(2 * Math.PI * 20 * t) * Lab.beta * 0.35;
+    // 穴位影响：把该穴位设定的频段权重平滑地乘到 α / β 成分上
+    const pe = Needle.sel >= 0 ? ACUPOINTS[Needle.sel].eff : null;
+    Lab.am += ((pe ? pe.alpha : 1) - Lab.am) * 0.12;
+    Lab.bm += ((pe ? pe.beta : 1) - Lab.bm) * 0.12;
+
+    const aWave = (t) => Math.sin(2 * Math.PI * 10 * t) * Lab.alpha * 0.55 * Lab.am;
+    const bWave = (t) => Math.sin(2 * Math.PI * 20 * t) * Lab.beta * 0.35 * Lab.bm;
     const nWave = (t) => (Math.sin(2 * Math.PI * 37 * t) * 0.5 + Math.sin(2 * Math.PI * 53 * t) * 0.5) * Lab.noise * 0.5;
 
     drawTrace(aWave, '#38BDF8', 1.2, 0.55);
@@ -1488,8 +1454,7 @@
         case 'dashboard': renderDashboard(); break;
         case 'eeg': renderEeg(); break;
         case 'eval': renderEval(); break;
-        case 'lab': renderLab(); break;
-        case 'needle': updateNeedlePanel(); break;
+        case 'lab': renderLab(); updateNeedlePanel(); break;
         case 'state': renderState(); break;
         case 'tcm': renderTcm(); break;
         case 'method': break;
@@ -1505,7 +1470,7 @@
     App.lastTick = now;
     Sim.advance(dt);
     render(dt);
-    if (App.current === 'needle') needleDraw(dt);
+    if (App.current === 'lab') needleDraw(dt);
     requestAnimationFrame(loop);
   }
 
@@ -1531,8 +1496,8 @@
       Sim.state.running = false; // 预跑后停住，便于截图
     }
     if (page && PAGE_FN[page]) go(page);
-    // 截图调试：?page=needle&sel=0 预选某个穴位并插好针
-    if (App.current === 'needle') {
+    // 截图调试：?page=lab&sel=0 预选某个穴位并插好针
+    if (App.current === 'lab') {
       const sel = Number(params.get('sel') === null ? -1 : params.get('sel'));
       if (sel >= 0 && ACUPOINTS[sel]) {
         Needle.sel = sel; Needle.insert = 1;
@@ -1548,5 +1513,7 @@
   }
 
   document.addEventListener('DOMContentLoaded', boot);
+  App.lab = Lab;
+  App.needle = Needle;
   global.App = App;
 }(window));
