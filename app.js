@@ -239,6 +239,7 @@
               <span><span class="legend-dot" style="background:#34D399"></span>β 成分（约 20 Hz）</span>
               <span><span class="legend-dot" style="background:#7C8DA6"></span>噪声</span>
               <span><span class="legend-dot" style="background:#E8F1FF"></span>叠加结果</span>
+              <span><span class="legend-dot" style="background:rgba(200,220,255,.45)"></span>虚线＝未扎针</span>
             </div>
           </div>
         </div>
@@ -894,10 +895,24 @@
     const bWave = (t) => Math.sin(2 * Math.PI * 20 * t) * Lab.beta * 0.35 * Lab.bm;
     const nWave = (t) => (Math.sin(2 * Math.PI * 37 * t) * 0.5 + Math.sin(2 * Math.PI * 53 * t) * 0.5) * Lab.noise * 0.5;
 
+    // 未扎针时的叠加曲线（虚线参照，用来对比变化）
+    const baseWave = (t) => Math.sin(2 * Math.PI * 10 * t) * Lab.alpha * 0.55
+      + Math.sin(2 * Math.PI * 20 * t) * Lab.beta * 0.35 + nWave(t);
+    ctx.setLineDash([5, 4]);
+    drawTrace(baseWave, 'rgba(200,220,255,.45)', 1.2, 1);
+    ctx.setLineDash([]);
+
     drawTrace(aWave, '#38BDF8', 1.2, 0.55);
     drawTrace(bWave, '#34D399', 1.2, 0.55);
     drawTrace(nWave, '#7C8DA6', 1, 0.5);
-    drawTrace((t) => aWave(t) + bWave(t) + nWave(t), '#E8F1FF', 1.8, 1);
+    drawTrace((t) => aWave(t) + bWave(t) + nWave(t), '#E8F1FF', 2, 1);
+
+    // 倍率角标
+    const badge = pe
+      ? `α ×${pe.alpha.toFixed(2)}   β ×${pe.beta.toFixed(2)}   （虚线＝未扎针）`
+      : '虚线＝未扎针 · 选一个穴位看变化';
+    const hintEl = $('#lab-wave-hint');
+    if (hintEl && hintEl.textContent !== badge) hintEl.textContent = badge;
 
     ctx.fillStyle = 'rgba(232,241,255,.55)';
     ctx.font = '10px Consolas, monospace';
