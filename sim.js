@@ -84,6 +84,7 @@
     patient: { name: '演示样本', sex: '—', age: 0, disease: '（无真实受试者）' },
     operator: '演示者',
     ui: { vas: 7, deqi: 0, symptomImp: 2, manual: false },
+    pointEffect: { delta: 1, theta: 1, alpha: 1, beta: 1, gamma: 1 },
     sessionStart: 0,
     elapsedReal: 0,
   };
@@ -146,7 +147,12 @@
 
   function nextSample(t) {
     // 幅度平滑：τ≈2.2s，避免阶段切换时波形"跳变"
-    const target = ENV[S.phase] || ENV.baseline;
+    const base = ENV[S.phase] || ENV.baseline;
+    // 穴位影响：仅作用在进针之后的阶段（留针/起针/复评），基线保持中性
+    const applyPoint = (S.phase === 'retain' || S.phase === 'remove' || S.phase === 'post');
+    const pe = S.pointEffect;
+    const target = {};
+    for (const b of BANDS) target[b.key] = applyPoint ? base[b.key] * (pe[b.key] == null ? 1 : pe[b.key]) : base[b.key];
     const k = 1 - Math.exp(-1 / (FS * 2.2));
     for (const b of BANDS) S.amp[b.key] = lerp(S.amp[b.key], target[b.key], k);
 
@@ -534,5 +540,11 @@
     start, resume, pause, reset, setSpeed, setUi, advance,
     waveform, getMetrics: () => S.metrics, historySessions, levelOf,
     fmt, clamp,
+    // 3D 扎针页用：设置「穴位 → 频段权重」，仅影响进针之后的阶段
+    setPointEffect(e) {
+      const keys = ['delta', 'theta', 'alpha', 'beta', 'gamma'];
+      for (const k of keys) S.pointEffect[k] = (e && e[k] != null) ? e[k] : 1;
+    },
+    getPointEffect: () => Object.assign({}, S.pointEffect),
   };
 }(window));
