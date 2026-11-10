@@ -1525,6 +1525,32 @@
     if (params.get('report') === '1' && App.current === 'report') {
       generateReport(true);
     }
+
+    // 封面 / 门户页
+    const cover = document.getElementById('cover');
+    if (cover) {
+      const enter = (autoStart) => {
+        cover.classList.add('hidden');
+        setTimeout(() => { cover.style.display = 'none'; }, 460);
+        if (autoStart) startTest();
+      };
+      const b1 = document.getElementById('cover-enter');
+      const b2 = document.getElementById('cover-demo');
+      if (b1) b1.addEventListener('click', () => enter(false));
+      if (b2) b2.addEventListener('click', () => enter(true));
+      // 截图 / 录屏参数：?page=xxx、?fast=N、?report=1、?noveil=1 时跳过封面
+      if (page || fast > 0 || params.get('report') === '1' || params.get('noveil') === '1') {
+        cover.style.display = 'none';
+      }
+      App.showCover = () => { cover.style.display = ''; cover.classList.remove('hidden'); };
+      // 点左上角品牌可回到封面
+      const brand = document.querySelector('.brand');
+      if (brand) {
+        brand.style.cursor = 'pointer';
+        brand.title = '回到封面';
+        brand.addEventListener('click', () => App.showCover());
+      }
+    }
   }
 
   document.addEventListener('DOMContentLoaded', boot);
