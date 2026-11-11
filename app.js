@@ -1490,6 +1490,132 @@
   }
 
   /* ================= 启动 ================= */
+  /* ---- 封面：全息脑电示意（静态，不自动旋转） ---- */
+  function coverHoloDraw() {
+    const cv = document.getElementById('cover-holo');
+    if (!cv) return;
+    const ctx = cv.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const w = cv.clientWidth, h = cv.clientHeight;
+    if (!w || !h) return;
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+      cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    const yaw = 0.52, pitch = -0.06;
+    const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+    const cx = w / 2, mid = h * 0.52, scale = Math.min(w, h) * 0.36;
+    const proj = (p) => {
+      const x = p[0] * cy + p[2] * sy;
+      const z = -p[0] * sy + p[2] * cy;
+      const y = p[1] * cp - z * sp;
+      const z2 = p[1] * sp + z * cp;
+      const s = scale / (1.9 - z2 * 0.3);
+      return { x: cx + x * s, y: mid - y * s, z: z2 };
+    };
+
+    // 网格底
+    ctx.strokeStyle = 'rgba(56,189,248,.07)';
+    ctx.lineWidth = 1;
+    for (let i = 1; i < 6; i++) {
+      ctx.beginPath(); ctx.ellipse(cx, mid + scale * 0.92, scale * 0.55 * i / 6, scale * 0.14 * i / 6, 0, 0, Math.PI * 2); ctx.stroke();
+    }
+
+    // 头部点云
+    needleModelPoints().forEach((p) => {
+      const r = proj(p);
+      const a = Math.max(0.03, (r.z + 0.9) / 1.8);
+      ctx.fillStyle = `rgba(96,180,255,${(0.05 + a * 0.26).toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(r.x, r.y, 0.65 + a * 1.15, 0, Math.PI * 2); ctx.fill();
+    });
+
+    // 8 个脑电电极
+    const ELEC = [[-0.55, 0.74, 0.40], [-0.22, 0.82, 0.46], [0.22, 0.82, 0.46], [0.55, 0.74, 0.40],
+      [-0.66, 0.34, 0.40], [-0.28, 0.30, 0.80], [0.28, 0.30, 0.80], [0.66, 0.34, 0.40]];
+    ELEC.forEach((p) => {
+      const r = proj(p);
+      ctx.save(); ctx.shadowColor = '#38BDF8'; ctx.shadowBlur = 14;
+      ctx.fillStyle = 'rgba(56,189,248,.95)';
+      ctx.beginPath(); ctx.arc(r.x, r.y, 3.4, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    });
+
+    // 11 个可选穴位
+    ACUPOINTS.forEach((a) => {
+      const r = proj(a.p);
+      if (r.z < -0.15) return;
+      ctx.save(); ctx.shadowColor = '#34D399'; ctx.shadowBlur = 11;
+      ctx.fillStyle = 'rgba(52,211,153,.92)';
+      ctx.beginPath(); ctx.arc(r.x, r.y, 2.8, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    });
+
+    ctx.fillStyle = 'rgba(125,211,252,.5)';
+    ctx.font = '10px Consolas, monospace';
+    ctx.fillText('HOLOGRAM · 示意', 14, 20);
+  }
+
+  function bindCover() {
+    const cover = document.getElementById('cover');
+    if (!cover) return;
+    const enter = (target) => {
+      cover.classList.add('hidden');
+      setTimeout(() => { cover.style.display = 'none'; }, 470);
+      if (target === 'demo') startTest();
+      else if (target && PAGE_FN[target]) go(target);
+    };
+    ['cover-enter', 'cover-enter2'].forEach((id) => {
+      const b = document.getElementById(id);
+      if (b) b.addEventListener('click', () => enter());
+    });
+    const bDemo = document.getElementById('cover-demo');
+    if (bDemo) bDemo.addEventListener('click', () => enter('demo'));
+    document.querySelectorAll('.cv-nav__link[data-go]').forEach((el) => {
+      el.addEventListener('click', () => enter(el.dataset.go));
+    });
+
+    // 时钟
+    const clock = document.getElementById('cv-clock-text');
+    const tick = () => {
+      if (!clock) return;
+      const d = new Date(), p = (n) => String(n).padStart(2, '0');
+      clock.textContent = p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+    };
+    tick(); setInterval(tick, 1000);
+
+    // 统计数字（直接给最终值，避免动画在截图/录屏环境里停在中间帧）
+    document.querySelectorAll('.cv-stat .num').forEach((el) => {
+      el.textContent = Number(el.dataset.count) || 0;
+    });
+
+    // 底部内容条
+    const track = document.getElementById('cv-ticker-track');
+    if (track) {
+      const items = ['8 通道实时波形', 'FFT 频段功率', 'α / β / θ / δ 分解', '18 通道 10-20 系统',
+        '3D 选穴落针', '动手调一调', '科学方法与小测验', '实验记录与报告'];
+      const one = items.map((t) => '<span class="cv-ticker__item"><i></i>' + t + '</span>').join('');
+      track.innerHTML = one + one;
+    }
+
+    coverHoloDraw();
+    window.addEventListener('resize', () => { if (cover.style.display !== 'none') coverHoloDraw(); });
+
+    App.showCover = () => {
+      cover.style.display = '';
+      cover.classList.remove('hidden');
+      coverHoloDraw();
+      document.querySelectorAll('.page').forEach(() => {});
+    };
+    const brand = document.querySelector('.brand');
+    if (brand) {
+      brand.style.cursor = 'pointer';
+      brand.title = '回到封面';
+      brand.addEventListener('click', () => App.showCover());
+    }
+  }
+
   function boot() {
     buildNav();
     buildMain();
@@ -1527,28 +1653,12 @@
     }
 
     // 封面 / 门户页
-    const cover = document.getElementById('cover');
-    if (cover) {
-      const enter = (autoStart) => {
-        cover.classList.add('hidden');
-        setTimeout(() => { cover.style.display = 'none'; }, 460);
-        if (autoStart) startTest();
-      };
-      const b1 = document.getElementById('cover-enter');
-      const b2 = document.getElementById('cover-demo');
-      if (b1) b1.addEventListener('click', () => enter(false));
-      if (b2) b2.addEventListener('click', () => enter(true));
+    const coverEl = document.getElementById('cover');
+    if (coverEl) {
+      bindCover();
       // 截图 / 录屏参数：?page=xxx、?fast=N、?report=1、?noveil=1 时跳过封面
       if (page || fast > 0 || params.get('report') === '1' || params.get('noveil') === '1') {
-        cover.style.display = 'none';
-      }
-      App.showCover = () => { cover.style.display = ''; cover.classList.remove('hidden'); };
-      // 点左上角品牌可回到封面
-      const brand = document.querySelector('.brand');
-      if (brand) {
-        brand.style.cursor = 'pointer';
-        brand.title = '回到封面';
-        brand.addEventListener('click', () => App.showCover());
+        coverEl.style.display = 'none';
       }
     }
   }
